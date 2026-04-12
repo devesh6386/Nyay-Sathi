@@ -4,7 +4,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { API_BASE_URL } from "@/config";
 import { Card } from "@/components/ui/card";
 import {
   Scale, User, ShieldCheck, Eye, EyeOff, ArrowRight, Loader2, CheckCircle2,
@@ -50,7 +49,7 @@ export default function Auth() {
   const handleGoogleSuccess = async (credentialResponse: CredentialResponse) => {
     setLoading(true);
     try {
-      const res = await fetch("${API_BASE_URL}/auth/google", {
+      const res = await fetch("http://localhost:8000/auth/google", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ credential: credentialResponse.credential }),
@@ -76,7 +75,7 @@ export default function Auth() {
     setLoading(true);
     try {
       const res = await fetch(
-        isLogin ? "${API_BASE_URL}/login" : "${API_BASE_URL}/register",
+        isLogin ? "http://localhost:8000/login" : "http://localhost:8000/register",
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -113,7 +112,7 @@ export default function Auth() {
     e.preventDefault();
     setResetLoading(true);
     try {
-      const res = await fetch("${API_BASE_URL}/forgot-password", {
+      const res = await fetch("http://localhost:8000/forgot-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: resetEmail }),
@@ -134,7 +133,7 @@ export default function Auth() {
     e.preventDefault();
     setResetLoading(true);
     try {
-      const res = await fetch("${API_BASE_URL}/verify-otp", {
+      const res = await fetch("http://localhost:8000/verify-otp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: resetEmail, otp_code: otpCode }),
@@ -158,7 +157,7 @@ export default function Auth() {
     }
     setResetLoading(true);
     try {
-      const res = await fetch("${API_BASE_URL}/reset-password", {
+      const res = await fetch("http://localhost:8000/reset-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: resetEmail, otp_code: otpCode, new_password: newPass }),

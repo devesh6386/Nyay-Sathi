@@ -6,8 +6,6 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Card } from './ui/card';
 
-import { API_BASE_URL } from '@/config';
-
 interface Message {
   role: 'user' | 'ai';
   content: string;
@@ -43,7 +41,7 @@ export const AIChatbot: React.FC = () => {
     setLoading(true);
 
     try {
-      const response = await fetch(`${API_BASE_URL}/chat`, {
+      const response = await fetch('http://localhost:8000/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: input })

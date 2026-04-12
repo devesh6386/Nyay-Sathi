@@ -14,7 +14,6 @@ import { Upload, Shield, FileCheck, Download, Loader2, Hash, Clock, HardDrive, I
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { printBSACertificate } from "@/lib/printCertificate";
 import { toast } from "sonner";
-import { API_BASE_URL } from "@/config";
 
 interface HashedFile {
   name: string;
@@ -69,7 +68,7 @@ const EvidencePortal = () => {
         return;
       }
       try {
-        const res = await fetch(`${API_BASE_URL}/complaints`, {
+        const res = await fetch("http://localhost:8000/complaints", {
           headers: { "Authorization": `Bearer ${token}` }
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -146,7 +145,7 @@ const EvidencePortal = () => {
     console.log("[EVIDENCE] FormData prepared with file and hash:", fileData.hash);
 
     try {
-      const url = `${API_BASE_URL}/complaints/${selectedComplaintId}/evidence`;
+      const url = `http://localhost:8000/complaints/${selectedComplaintId}/evidence`;
       console.log("[EVIDENCE] Fetching POST to:", url);
       
       const res = await fetch(url, {
