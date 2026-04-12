@@ -116,3 +116,27 @@ def process_complaint(complaint_text: str, complainant_data: Dict[str, Any]) -> 
             "bnsSections": [],
             "firDraft": "An error occurred while generating the FIR draft. Please try again."
         }
+def simple_chat(query: str) -> str:
+    # 1. Retrieve relevant BNS sections (Top 3 for chat)
+    docs = db.similarity_search(query, k=3)
+    relevant_law = "\n".join([f"- {d.metadata['section']} ({d.metadata['title']}): {d.page_content}" for d in docs])
+    
+    chat_prompt = f"""
+    You are Nyaya AI Assistant, a helpful and empathetic legal guide for the Nyay-Sathi platform.
+    Your goal is to explain Indian laws (BNS) clearly to common citizens.
+    
+    User Query: {query}
+    
+    Relevant Law context:
+    {relevant_law}
+    
+    Guidelines:
+    - Be professional yet accessible.
+    - If the query is about a specific crime, mention the relevant BNS sections.
+    - If you don't know the answer or it's outside BNS, politely say so.
+    - Keep responses concise (under 3-4 paragraphs).
+    - Use bullet points for clarity if needed.
+    """
+    
+    response = llm.invoke(chat_prompt)
+    return response.content.strip()

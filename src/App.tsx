@@ -12,6 +12,7 @@ import NotFound from "./pages/NotFound";
 import Auth from "./pages/Auth";
 import TrackComplaint from "./pages/TrackComplaint";
 import ProtectedRoute from "./components/ProtectedRoute";
+import { AIChatbot } from "./components/AIChatbot";
 
 const queryClient = new QueryClient();
 
@@ -52,6 +53,7 @@ const App = () => (
           <Route path="/evidence" element={<EvidencePortal />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
+        <AIChatbot />
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>

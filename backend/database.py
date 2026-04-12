@@ -22,6 +22,7 @@ class User(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     complaints = relationship("Complaint", back_populates="citizen")
+    otps = relationship("PasswordResetOTP", back_populates="user")
 
 class Complaint(Base):
     __tablename__ = "complaints"
@@ -34,6 +35,32 @@ class Complaint(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
     citizen = relationship("User", back_populates="complaints")
+    evidence = relationship("Evidence", back_populates="complaint")
+
+class Evidence(Base):
+    __tablename__ = "evidence"
+    
+    id = Column(String, primary_key=True, default=generate_uuid)
+    complaint_id = Column(String, ForeignKey("complaints.id"), nullable=False)
+    file_name = Column(String, nullable=False)
+    file_path = Column(String, nullable=False)
+    file_type = Column(String)
+    file_hash = Column(String, nullable=False) # SHA-256
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    complaint = relationship("Complaint", back_populates="evidence")
+
+class PasswordResetOTP(Base):
+    __tablename__ = "password_reset_otps"
+    
+    id = Column(String, primary_key=True, default=generate_uuid)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False)
+    otp_code = Column(String(6), nullable=False)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    is_used = Column(Integer, default=0) # 0 = fresh, 1 = used
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    user = relationship("User", back_populates="otps")
 
 # Dependency
 def get_db():

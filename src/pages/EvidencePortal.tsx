@@ -1,8 +1,16 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Upload, Shield, FileCheck, Download, Loader2, Hash, Clock, HardDrive, Image, FileText, Film, Trash2, Plus } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Upload, Shield, FileCheck, Download, Loader2, Hash, Clock, HardDrive, Image, FileText, Film, Trash2, Plus, Send } from "lucide-react";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { toast } from "sonner";
 
@@ -101,11 +109,47 @@ const generateCertificatePDF = async (file: HashedFile) => {
 };
 
 const EvidencePortal = () => {
+  const [searchParams] = useSearchParams();
+  const preSelectedId = searchParams.get("complaintId");
+  
   const [isDragging, setIsDragging] = useState(false);
   const [isHashing, setIsHashing] = useState(false);
-  const [hashedFiles, setHashedFiles] = useState<HashedFile[]>([]);
-  const [selectedFile, setSelectedFile] = useState<HashedFile | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [hashedFiles, setHashedFiles] = useState<any[]>([]);
+  const [selectedFile, setSelectedFile] = useState<any | null>(null);
+  const [complaints, setComplaints] = useState<any[]>([]);
+  const [selectedComplaintId, setSelectedComplaintId] = useState<string>(preSelectedId || "");
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Fetch complaints on mount
+  useEffect(() => {
+    const fetchComplaints = async () => {
+      const token = localStorage.getItem("nyaysathi_token");
+      if (!token) {
+        console.error("No token found in localStorage");
+        return;
+      }
+      try {
+        const res = await fetch("http://localhost:8000/complaints", {
+          headers: { "Authorization": `Bearer ${token}` }
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        setComplaints(data);
+        
+        // Use pre-selected ID if it exists in the fetched list, otherwise first one
+        if (preSelectedId && data.find((c: any) => c.id === preSelectedId)) {
+          setSelectedComplaintId(preSelectedId);
+        } else if (data.length > 0 && !selectedComplaintId) {
+          setSelectedComplaintId(data[0].id);
+        }
+      } catch (err) {
+        console.error("Failed to fetch complaints", err);
+        toast.error("Could not load your cases. Please try logging in again.");
+      }
+    };
+    fetchComplaints();
+  }, [preSelectedId]);
 
   const hashFile = useCallback(async (file: File) => {
     setIsHashing(true);
@@ -120,13 +164,14 @@ const EvidencePortal = () => {
       previewUrl = URL.createObjectURL(file);
     }
 
-    const result: HashedFile = {
+    const result: any = {
       name: file.name,
       size: file.size,
       type: file.type,
       hash: hashHex,
       timestamp: new Date().toISOString(),
       previewUrl,
+      rawFile: file // Keep reference for upload
     };
 
     await new Promise((r) => setTimeout(r, 500));
@@ -134,8 +179,55 @@ const EvidencePortal = () => {
     setHashedFiles((prev) => [...prev, result]);
     setSelectedFile(result);
     setIsHashing(false);
-    toast.success(`"${file.name}" hashed & certified!`);
+    toast.success(`"${file.name}" hashed & certified locally!`);
   }, []);
+
+  const handleUpload = async (fileData: any) => {
+    console.log("[EVIDENCE] handleUpload called for:", fileData.name);
+    if (!selectedComplaintId) {
+      console.warn("[EVIDENCE] No complaint ID selected.");
+      toast.error("Please select a complaint/case to attach this evidence to.");
+      return;
+    }
+
+    setIsUploading(true);
+    const token = localStorage.getItem("nyaysathi_token");
+    console.log("[EVIDENCE] Using token:", token ? "Token present" : "Token MISSING");
+    
+    const formData = new FormData();
+    formData.append("file", fileData.rawFile);
+    formData.append("file_hash", fileData.hash);
+    console.log("[EVIDENCE] FormData prepared with file and hash:", fileData.hash);
+
+    try {
+      const url = `http://localhost:8000/complaints/${selectedComplaintId}/evidence`;
+      console.log("[EVIDENCE] Fetching POST to:", url);
+      
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${token}` },
+        body: formData
+      });
+
+      console.log("[EVIDENCE] Response status:", res.status);
+      const data = await res.json();
+      console.log("[EVIDENCE] Response data:", data);
+
+      if (!res.ok) {
+        throw new Error(data.detail || "Upload failed");
+      }
+      
+      toast.success("Evidence uploaded and linked to case successfully!");
+      console.log("[EVIDENCE] Upload success. Clearing local hashed file.");
+      setHashedFiles(prev => prev.filter(f => f.hash !== fileData.hash));
+      if (selectedFile?.hash === fileData.hash) setSelectedFile(null);
+    } catch (err: any) {
+      console.error("[EVIDENCE] Upload exception:", err);
+      toast.error(`Upload failed: ${err.message || "Unknown error"}`);
+    } finally {
+      setIsUploading(false);
+    }
+  };
 
   const handleMultipleFiles = useCallback(async (files: FileList) => {
     for (const file of Array.from(files)) {
@@ -175,9 +267,38 @@ const EvidencePortal = () => {
             Evidence <span className="text-gradient-saffron">Hashing Portal</span>
           </h1>
           <p className="text-muted-foreground">
-            BSA Section 63(4) compliant. SHA-256 hashing runs entirely in your browser — no files are uploaded.
+            BSA Section 63(4) compliant. SHA-256 hashing runs entirely in your browser — then securely transfer to your case.
           </p>
         </div>
+
+        {/* Complaint Selector */}
+        <Card className="p-4 mb-6 border-primary/20 bg-primary/5">
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center gap-2">
+              <FileCheck className="h-4 w-4 text-primary" />
+              <label className="text-sm font-semibold text-foreground">Associate with Active Complaint</label>
+            </div>
+            <Select value={selectedComplaintId} onValueChange={setSelectedComplaintId}>
+              <SelectTrigger className="bg-background border-primary/20">
+                <SelectValue placeholder="Select a complaint..." />
+              </SelectTrigger>
+              <SelectContent>
+                {complaints.length > 0 ? (
+                  complaints.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.title} (ID: {c.id.substring(0, 8)}...)
+                    </SelectItem>
+                  ))
+                ) : (
+                  <SelectItem value="none" disabled>No complaints found</SelectItem>
+                )}
+              </SelectContent>
+            </Select>
+            <p className="text-[10px] text-muted-foreground italic">
+              * Files will be securely linked to the selected case for officer review.
+            </p>
+          </div>
+        </Card>
 
         {/* Security notice */}
         <Card className="p-4 mb-6 bg-success/5 border-success/20">
@@ -302,6 +423,15 @@ const EvidencePortal = () => {
                           title="Download BSA Certificate"
                         >
                           <Download className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          className="h-8 px-2 text-[10px] gradient-saffron text-white border-none"
+                          onClick={(e) => { e.stopPropagation(); handleUpload(file); }}
+                          disabled={isUploading}
+                        >
+                          {isUploading ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Send className="h-3 w-3 mr-1" />}
+                          Submit to Case
                         </Button>
                         <Button
                           size="sm"

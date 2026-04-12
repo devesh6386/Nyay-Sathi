@@ -3,8 +3,19 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { FileText, Clock, CheckCircle, Shield, Loader2 } from "lucide-react";
+import { FileText, Clock, CheckCircle, Shield, Loader2, Download, Eye, FileDigit, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 const statusStyles: Record<string, string> = {
   pending: "bg-amber-500/20 text-amber-400 border-amber-500/30",
@@ -36,7 +47,10 @@ const OfficerDashboard = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [draftText, setDraftText] = useState("");
   const [isDispatching, setIsDispatching] = useState(false);
+  const [isResolving, setIsResolving] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [evidence, setEvidence] = useState<any[]>([]);
+  const [loadingEvidence, setLoadingEvidence] = useState(false);
 
   const fetchFirs = async (quiet = false) => {
     if (!quiet) setLoading(true);
@@ -77,9 +91,33 @@ const OfficerDashboard = () => {
 
   useEffect(() => {
     fetchFirs();
-    const interval = setInterval(() => fetchFirs(true), 5000);
+    const interval = setInterval(() => fetchFirs(true), 15000); // 15s is enough for background sync
     return () => clearInterval(interval);
   }, []);
+
+  const fetchEvidence = async (complaintId: string) => {
+    setLoadingEvidence(true);
+    const token = localStorage.getItem("nyaysathi_token");
+    try {
+      const res = await fetch(`http://localhost:8000/complaints/${complaintId}/evidence`, {
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setEvidence(data);
+      }
+    } catch (err) {
+      console.error("Failed to fetch evidence", err);
+    } finally {
+      setLoadingEvidence(false);
+    }
+  };
+
+  useEffect(() => {
+    if (selectedFIR) {
+      fetchEvidence(selectedFIR.id);
+    }
+  }, [selectedFIR?.id]);
 
   const handleDispatch = async () => {
     if (!selectedFIR) return;
@@ -100,6 +138,32 @@ const OfficerDashboard = () => {
       toast.error("Failed to dispatch FIR.");
     } finally {
       setIsDispatching(false);
+    }
+  };
+
+  const handleResolve = async () => {
+    if (!selectedFIR) return;
+    
+    setIsResolving(true);
+    try {
+      const token = localStorage.getItem("nyaysathi_token");
+      const res = await fetch(`http://localhost:8000/complaints/${selectedFIR.id}/status`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify({ status: "resolved" })
+      });
+      if (!res.ok) throw new Error("Failed");
+      
+      // Update local state for immediate feedback
+      const updatedFirs = firs.map(f => f.id === selectedFIR.id ? { ...f, status: "resolved" } : f);
+      setFirs(updatedFirs);
+      setSelectedFIR({ ...selectedFIR, status: "resolved" });
+      
+      toast.success("Case marked as Resolved successfully.");
+    } catch (err: any) {
+      toast.error("Failed to resolve case.");
+    } finally {
+      setIsResolving(false);
     }
   };
 
@@ -253,6 +317,83 @@ const OfficerDashboard = () => {
                     )}
                   </div>
 
+                  {/* Evidence Section */}
+                  <div className="mb-6">
+                    <div className="flex items-center justify-between mb-3">
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">Attached Evidence</p>
+                      {loadingEvidence && <Loader2 className="h-3 w-3 animate-spin text-primary" />}
+                    </div>
+                    
+                    {evidence.length > 0 ? (
+                      <div className="grid grid-cols-1 gap-3">
+                        {evidence.map((item) => {
+                          const isImage = item.file_type?.startsWith("image/");
+                          const isPDF = item.file_type?.includes("pdf") || item.file_name?.toLowerCase().endsWith(".pdf");
+                          
+                          return (
+                            <div key={item.id} className="flex flex-col gap-2 p-3 rounded-lg bg-secondary/20 border border-border/50 group hover:border-primary/30 transition-colors">
+                              <div className="flex items-center gap-3">
+                                <div className="h-12 w-12 rounded bg-background border border-border/50 flex items-center justify-center shrink-0 overflow-hidden shadow-sm">
+                                   {isImage ? (
+                                     <img 
+                                       src={`http://localhost:8000${item.file_path}`} 
+                                       alt={item.file_name} 
+                                       className="h-full w-full object-cover"
+                                     />
+                                   ) : isPDF ? (
+                                     <FileText className="h-6 w-6 text-red-400" />
+                                   ) : (
+                                     <FileDigit className="h-6 w-6 text-primary/60" />
+                                   )}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-xs font-semibold text-foreground truncate">{item.file_name}</p>
+                                  <Badge variant="secondary" className="text-[9px] px-1 h-4 bg-primary/10 text-primary border-none mt-0.5">
+                                    {isImage ? "IMAGE" : isPDF ? "PDF" : "BINARY"}
+                                  </Badge>
+                                </div>
+                                <div className="flex gap-1">
+                                  <Button 
+                                    size="sm" 
+                                    variant="ghost" 
+                                    className="h-8 w-8 p-0 hover:bg-primary/10"
+                                    onClick={() => window.open(`http://localhost:8000${item.file_path}`, '_blank')}
+                                    title="View Full"
+                                  >
+                                    <Eye className="h-4 w-4 text-primary" />
+                                  </Button>
+                                  <Button 
+                                    size="sm" 
+                                    variant="ghost" 
+                                    className="h-8 w-8 p-0 hover:bg-emerald-500/10"
+                                    onClick={() => {
+                                      const link = document.createElement('a');
+                                      link.href = `http://localhost:8000${item.file_path}`;
+                                      link.download = item.file_name;
+                                      link.click();
+                                    }}
+                                    title="Download"
+                                  >
+                                    <Download className="h-4 w-4 text-emerald-500" />
+                                  </Button>
+                                </div>
+                              </div>
+                              <div className="pt-2 border-t border-border/20">
+                                <p className="text-[10px] font-mono text-muted-foreground truncate flex items-center gap-1">
+                                  <Shield className="h-3 w-3" /> Hash: {item.file_hash}
+                                </p>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="py-4 text-center border-2 border-dashed border-border rounded-lg">
+                        <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold opacity-50">No Evidence Attached Yet</p>
+                      </div>
+                    )}
+                  </div>
+
                   {/* Action Buttons */}
                   <div className="flex flex-wrap gap-3">
                     <Button
@@ -263,6 +404,40 @@ const OfficerDashboard = () => {
                       {isDispatching ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                       {selectedFIR.status === "dispatched" ? "Already Dispatched" : "Approve & Dispatch"}
                     </Button>
+
+                    {selectedFIR.status === "dispatched" && (
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
+                            disabled={isResolving}
+                          >
+                            {isResolving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle className="mr-2 h-4 w-4" />}
+                            Resolve Case
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent className="bg-card border-border">
+                          <AlertDialogHeader>
+                            <AlertDialogTitle className="flex items-center gap-2">
+                              <AlertCircle className="h-5 w-5 text-emerald-500" />
+                              Finalize Case Resolution?
+                            </AlertDialogTitle>
+                            <AlertDialogDescription className="text-muted-foreground">
+                              By resolving this case, you are confirming that all necessary legal proceedings and investigations have been completed. This status update will be visible to the citizen and cannot be undone.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel className="bg-secondary hover:bg-secondary/80">Cancel</AlertDialogCancel>
+                            <AlertDialogAction 
+                              onClick={handleResolve}
+                              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                            >
+                              Confirm Resolution
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    )}
 
                     {isEditing ? (
                       <>
@@ -283,7 +458,7 @@ const OfficerDashboard = () => {
                     )}
 
                     <Button variant="outline" asChild>
-                      <a href="/evidence">
+                      <a href={`/evidence?complaintId=${selectedFIR.id}`}>
                         <Shield className="mr-2 h-4 w-4" />
                         Certify Evidence
                       </a>
