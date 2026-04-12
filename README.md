@@ -386,7 +386,3 @@ Built with ❤️ by the Nyaya-Sathi Team
 MIT License
 
 ---
-
-## ⭐ Final One-Liner
-
-> AI-powered legal infrastructure that transforms citizen complaints into BNS-mapped FIRs and court-admissible cryptographically verified evidence.
