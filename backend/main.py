@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 import random
 import os
 import shutil
+import groq
 
 from database import get_db, User, Complaint, PasswordResetOTP, Evidence
 from auth import get_password_hash, verify_password, create_access_token, get_current_user, require_role
@@ -280,6 +281,38 @@ def analyze_complaint(req: ComplaintRequest, current_user: User = Depends(get_cu
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/transcribe")
+async def transcribe_audio(file: UploadFile = File(...)):
+    """Transcribes an audio file using Groq's whisper model."""
+    try:
+        client = groq.Groq(api_key=os.environ.get("GROQ_API_KEY"))
+        audio_content = await file.read()
+        
+        # Groq's python client expects a file object (filename, content)
+        # We can write to a temporary file locally and pass it
+        temp_filename = f"temp_{random.randint(1000, 9999)}_{file.filename}"
+        with open(temp_filename, "wb") as f:
+            f.write(audio_content)
+            
+        with open(temp_filename, "rb") as f:
+            transcription = client.audio.transcriptions.create(
+                file=(temp_filename, f.read()),
+                model="whisper-large-v3",
+                language="hi",  # Forces Devanagari script for Hindi; English code-switching still works
+                prompt="The speaker may use Hindi and English in the same sentence. Please transcribe Hindi words in Devanagari script and keep English words in Latin script. वक्ता हिंदी और अंग्रेजी मिलाकर बोल सकते हैं।"
+            )
+        os.remove(temp_filename)
+        
+        # Hard filter: only keep English (ASCII printable) and Hindi (Devanagari) characters
+        import re
+        raw = transcription.text
+        filtered = re.sub(r"[^\x20-\x7E\u0900-\u097F\u0964\u0965]", "", raw)
+        return {"transcript": filtered.strip()}
+    except Exception as e:
+        if 'temp_filename' in locals() and os.path.exists(temp_filename):
+            os.remove(temp_filename)
+        raise HTTPException(status_code=500, detail=f"Transcription failed: {str(e)}")
 
 @app.post("/complaints")
 def create_complaint(title: str, description: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):

@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Brain, Upload, FileText, CheckCircle, Loader2, Mic, MicOff, Square, User, Info } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { printFIR } from "@/lib/printFIR";
 
 interface ExtractedData {
   translatedText: string;
@@ -59,7 +60,18 @@ const CitizenComplaint = () => {
   const startRecording = useCallback(async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
+
+      // Pick the best supported format; fall back gracefully
+      const preferredTypes = [
+        "audio/webm;codecs=opus",
+        "audio/webm",
+        "audio/ogg;codecs=opus",
+        "audio/ogg",
+        "audio/mp4",
+      ];
+      const mimeType = preferredTypes.find((t) => MediaRecorder.isTypeSupported(t)) || "";
+
+      const mediaRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
       mediaRecorderRef.current = mediaRecorder;
       chunksRef.current = [];
 
@@ -69,11 +81,13 @@ const CitizenComplaint = () => {
 
       mediaRecorder.onstop = async () => {
         stream.getTracks().forEach((t) => t.stop());
-        const audioBlob = new Blob(chunksRef.current, { type: "audio/webm" });
-        await transcribeAudio(audioBlob);
+        const actualMime = mediaRecorder.mimeType || mimeType;
+        const ext = actualMime.includes("ogg") ? "ogg" : actualMime.includes("mp4") ? "mp4" : "webm";
+        const audioBlob = new Blob(chunksRef.current, { type: actualMime });
+        await transcribeAudio(audioBlob, ext);
       };
 
-      mediaRecorder.start();
+      mediaRecorder.start(250); // collect every 250ms for smoother audio
       setIsRecording(true);
       toast.info("Recording started — speak your complaint");
     } catch (err) {
@@ -89,26 +103,20 @@ const CitizenComplaint = () => {
     }
   }, []);
 
-  const transcribeAudio = async (audioBlob: Blob) => {
+  const transcribeAudio = async (audioBlob: Blob, ext = "webm") => {
     setIsTranscribing(true);
     try {
       const formData = new FormData();
-      formData.append("file", audioBlob, "recording.webm");
+      formData.append("file", audioBlob, `recording.${ext}`);
 
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/sarvam-stt`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-          },
-          body: formData,
-        }
-      );
+      const response = await fetch("http://localhost:8000/transcribe", {
+        method: "POST",
+        body: formData,
+      });
 
       if (!response.ok) {
         const err = await response.json();
-        throw new Error(err.error || "Transcription failed");
+        throw new Error(err.detail || "Transcription failed");
       }
 
       const data = await response.json();
@@ -166,200 +174,31 @@ const CitizenComplaint = () => {
   const handleDownloadPDF = async () => {
     if (!result) return;
     try {
-      const { PDFDocument, StandardFonts, rgb } = await import('pdf-lib');
-      const pdfDoc = await PDFDocument.create();
-      let page = pdfDoc.addPage([600, 842]); // A4
-      const { width, height } = page.getSize();
-      
-      const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-      const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-      
-      const margin = 40;
-      let yOffset = height - margin;
-
-      const drawBorder = (p: any) => {
-        p.drawRectangle({
-          x: margin - 10,
-          y: margin - 10,
-          width: width - 2 * margin + 20,
-          height: height - 2 * margin + 20,
-          borderColor: rgb(0, 0, 0),
-          borderWidth: 1,
-        });
-      };
-      
-      drawBorder(page);
-
-      page.drawText('FORM NO. 1', { x: margin, y: yOffset, size: 10, font: boldFont });
-      yOffset -= 20;
-
-      // Header
-      page.drawText('FIRST INFORMATION REPORT', {
-        x: width / 2 - 120,
-        y: yOffset,
-        size: 16,
-        font: boldFont,
-      });
-      yOffset -= 15;
-
-      page.drawText('(Under Section 173 BNSS / 154 Cr.P.C.)', {
-        x: width / 2 - 95,
-        y: yOffset,
-        size: 10,
-        font: font,
-      });
-      yOffset -= 30;
-
-      const sanitizeStr = (str: string) => {
-        if (!str) return '---';
-        return str.replace(/[\u2018\u2019]/g, "'") // smart single quotes
-                  .replace(/[\u201C\u201D]/g, '"') // smart double quotes
-                  .replace(/[\u2013\u2014]/g, '-') // em and en dashes
-                  .replace(/[^\x20-\x7E\n]/g, ''); // drop everything else (e.g. emojis, non-Latin chars)
-      };
-
       const getEntity = (lbl: string) => {
         const val = result.entities.find(e => e.label.toLowerCase().includes(lbl.toLowerCase()))?.value;
-        return sanitizeStr(val || '---');
+        return val || '';
       };
-      const loc = getEntity('location');
-      const time = getEntity('time');
-      const suspect = getEntity('suspect');
-      const stolen = getEntity('stolen');
-
-      const drawRow = (label: string, value: string) => {
-        page.drawText(label, { x: margin, y: yOffset, size: 10, font: boldFont });
-        // Handle long values in rows roughly
-        if (value.length > 60) {
-            page.drawText(value.substring(0, 60) + '...', { x: margin + 170, y: yOffset, size: 10, font });
-        } else {
-            page.drawText(value, { x: margin + 170, y: yOffset, size: 10, font });
-        }
-      };
-
-      const dateStr = new Date().toLocaleDateString();
-      const timeStr = new Date().toLocaleTimeString();
-      const sectionsStr = result.bnsSections.map(s => s.section).join(', ') || '---';
-
-      // 1. District, PS, Year
-      page.drawText('1. District:', { x: margin, y: yOffset, size: 10, font: boldFont });
-      page.drawText('Delhi', { x: margin + 60, y: yOffset, size: 10, font });
-      page.drawText('P.S.:', { x: 180, y: yOffset, size: 10, font: boldFont });
-      page.drawText('Pending Assign.', { x: 210, y: yOffset, size: 10, font });
-      page.drawText('Year:', { x: 330, y: yOffset, size: 10, font: boldFont });
-      page.drawText(new Date().getFullYear().toString(), { x: 360, y: yOffset, size: 10, font });
-      page.drawText('Date:', { x: 420, y: yOffset, size: 10, font: boldFont });
-      page.drawText(dateStr, { x: 455, y: yOffset, size: 10, font });
-      yOffset -= 20;
-
-      drawRow('2. Acts & Sections:', sectionsStr);
-      yOffset -= 20;
-
-      drawRow('3. (a) Occurrence of Offence:', '');
-      yOffset -= 15;
-      drawRow('   Date/Time:', time);
-      yOffset -= 15;
-      drawRow('   (b) Information received at P.S.:', `${dateStr} at ${timeStr}`);
-      yOffset -= 20;
-
-      drawRow('4. Type of Information:', 'Written / Digital');
-      yOffset -= 20;
-
-      drawRow('5. Place of Occurrence:', '');
-      yOffset -= 15;
-      drawRow('   Address:', loc);
-      yOffset -= 20;
-
-      drawRow('6. Complainant / Informant:', '');
-      yOffset -= 15;
-      drawRow('   (a) Name:', sanitizeStr(details.fullName || '---'));
-      yOffset -= 15;
-      drawRow('   (b) Father\'s/Husband\'s Name:', sanitizeStr(details.fatherName || '---'));
-      yOffset -= 15;
-      drawRow('   (c) Nationality / Age:', sanitizeStr(`Indian / ${details.age || '---'}`));
-      yOffset -= 15;
-      drawRow('   (d) ID Details:', sanitizeStr(`${details.idType || 'None'}: ${details.idNumber || 'None'}`));
-      yOffset -= 15;
-      drawRow('   (e) Phone / Contact:', sanitizeStr(details.phone || '---'));
-      yOffset -= 15;
-      drawRow('   (f) Address:', sanitizeStr(details.address || '---'));
-      yOffset -= 20;
-
-      drawRow('7. Details of suspected accused:', suspect);
-      yOffset -= 20;
-
-      drawRow('8. Particulars of properties stolen:', stolen);
-      yOffset -= 20;
 
       const evidenceStr = evidenceFiles.length > 0 
            ? evidenceFiles.map(e => `${e.name} (SHA-256: ${e.hash.substring(0,8)}...)`).join(', ') 
-           : 'None Attached';
-      drawRow('9. Attached Digital Evidence:', '');
-      yOffset -= 15;
-      drawRow('   Hashes & Files:', evidenceStr);
-      yOffset -= 20;
+           : '';
 
-      // Draw Separator
-      page.drawLine({
-        start: { x: margin, y: yOffset },
-        end: { x: width - margin, y: yOffset },
-        thickness: 1,
+      printFIR({
+        complainantName: details.fullName,
+        fatherName: details.fatherName,
+        age: details.age,
+        idDetails: details.idType ? `${details.idType}: ${details.idNumber}` : "",
+        phone: details.phone,
+        address: details.address,
+        suspect: getEntity('suspect'),
+        stolen: getEntity('stolen'),
+        location: getEntity('location'),
+        time: getEntity('time'),
+        sections: result.bnsSections.map(s => s.section).join(', '),
+        evidence: evidenceStr,
+        draft: result.firDraft,
+        generatedFileName: `FIR_Draft_${details.fullName ? details.fullName.replace(/\s+/g, '_') : 'NyayaSathi'}.pdf`
       });
-      yOffset -= 20;
-
-      page.drawText('12. F.I.R. Contents (Statement / Complaint Details):', { x: margin, y: yOffset, size: 11, font: boldFont });
-      yOffset -= 20;
-      
-      const draftText = sanitizeStr(result.firDraft);
-      const lines = draftText.split('\n');
-      for (const line of lines) {
-        const words = line.split(' ');
-        let currentLine = '';
-        for (const word of words) {
-          const testLine = currentLine ? currentLine + ' ' + word : word;
-          const textWidth = font.widthOfTextAtSize(testLine, 10);
-          if (textWidth > width - 2 * margin) {
-            page.drawText(currentLine, { x: margin, y: yOffset, size: 10, font });
-            yOffset -= 14;
-            currentLine = word;
-          } else {
-            currentLine = testLine;
-          }
-        }
-        if (currentLine) {
-          page.drawText(currentLine, { x: margin, y: yOffset, size: 10, font });
-          yOffset -= 14;
-        }
-        
-        if (yOffset < margin + 60) {
-          page = pdfDoc.addPage([600, 842]);
-          drawBorder(page);
-          yOffset = height - margin - 20;
-        }
-      }
-
-      yOffset -= 40;
-      if (yOffset < margin + 40) {
-          page = pdfDoc.addPage([600, 842]);
-          drawBorder(page);
-          yOffset = height - margin - 40;
-      }
-
-      page.drawText('Signature / Thumb Impression of', { x: margin, y: yOffset, size: 10, font: font });
-      page.drawText('Signature of Officer-in-Charge, Police Station', { x: width - margin - 220, y: yOffset, size: 10, font: font });
-      yOffset -= 15;
-      page.drawText('Complainant / Informant', { x: margin, y: yOffset, size: 10, font: font });
-
-      const pdfBytes = await pdfDoc.save();
-      const blob = new Blob([pdfBytes as unknown as Uint8Array<ArrayBuffer>], { type: 'application/pdf' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `FIR_Draft_${details.fullName ? details.fullName.replace(/\s+/g, '_') : 'NyayaSathi'}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
     } catch (err) {
       console.error('Error generating PDF:', err);
       toast.error('Failed to generate official PDF document');
@@ -531,7 +370,7 @@ const CitizenComplaint = () => {
         {/* Complaint Input */}
         <Card className="p-6 mb-6 bg-card border-border">
           <label className="text-sm font-medium text-card-foreground mb-2 block">
-            Your Complaint (Hindi, English, or mixed)
+            Your Complaint (Hindi and English)
           </label>
           <Textarea
             value={complaint}
