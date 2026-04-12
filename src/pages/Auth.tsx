@@ -326,7 +326,7 @@ export default function Auth() {
 
             {/* Email */}
             <div className="space-y-1.5">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="email">{role === "officer" ? "Enter Official Email ID" : "Email"}</Label>
               <div className={`relative rounded-md transition-all duration-200 ${emailFocused ? "ring-1 ring-primary/50" : ""}`}>
                 <Input
                   id="email"

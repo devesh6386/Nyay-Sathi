@@ -210,7 +210,18 @@ const CitizenComplaint = () => {
       });
       yOffset -= 30;
 
-      const getEntity = (lbl: string) => result.entities.find(e => e.label.toLowerCase().includes(lbl.toLowerCase()))?.value || '---';
+      const sanitizeStr = (str: string) => {
+        if (!str) return '---';
+        return str.replace(/[\u2018\u2019]/g, "'") // smart single quotes
+                  .replace(/[\u201C\u201D]/g, '"') // smart double quotes
+                  .replace(/[\u2013\u2014]/g, '-') // em and en dashes
+                  .replace(/[^\x20-\x7E\n]/g, ''); // drop everything else (e.g. emojis, non-Latin chars)
+      };
+
+      const getEntity = (lbl: string) => {
+        const val = result.entities.find(e => e.label.toLowerCase().includes(lbl.toLowerCase()))?.value;
+        return sanitizeStr(val || '---');
+      };
       const loc = getEntity('location');
       const time = getEntity('time');
       const suspect = getEntity('suspect');
@@ -261,17 +272,17 @@ const CitizenComplaint = () => {
 
       drawRow('6. Complainant / Informant:', '');
       yOffset -= 15;
-      drawRow('   (a) Name:', details.fullName || '---');
+      drawRow('   (a) Name:', sanitizeStr(details.fullName || '---'));
       yOffset -= 15;
-      drawRow('   (b) Father\'s/Husband\'s Name:', details.fatherName || '---');
+      drawRow('   (b) Father\'s/Husband\'s Name:', sanitizeStr(details.fatherName || '---'));
       yOffset -= 15;
-      drawRow('   (c) Nationality / Age:', `Indian / ${details.age || '---'}`);
+      drawRow('   (c) Nationality / Age:', sanitizeStr(`Indian / ${details.age || '---'}`));
       yOffset -= 15;
-      drawRow('   (d) ID Details:', `${details.idType || 'None'}: ${details.idNumber || 'None'}`);
+      drawRow('   (d) ID Details:', sanitizeStr(`${details.idType || 'None'}: ${details.idNumber || 'None'}`));
       yOffset -= 15;
-      drawRow('   (e) Phone / Contact:', details.phone || '---');
+      drawRow('   (e) Phone / Contact:', sanitizeStr(details.phone || '---'));
       yOffset -= 15;
-      drawRow('   (f) Address:', details.address || '---');
+      drawRow('   (f) Address:', sanitizeStr(details.address || '---'));
       yOffset -= 20;
 
       drawRow('7. Details of suspected accused:', suspect);
@@ -299,7 +310,8 @@ const CitizenComplaint = () => {
       page.drawText('12. F.I.R. Contents (Statement / Complaint Details):', { x: margin, y: yOffset, size: 11, font: boldFont });
       yOffset -= 20;
       
-      const lines = result.firDraft.split('\n');
+      const draftText = sanitizeStr(result.firDraft);
+      const lines = draftText.split('\n');
       for (const line of lines) {
         const words = line.split(' ');
         let currentLine = '';
@@ -339,12 +351,14 @@ const CitizenComplaint = () => {
       page.drawText('Complainant / Informant', { x: margin, y: yOffset, size: 10, font: font });
 
       const pdfBytes = await pdfDoc.save();
-      const blob = new Blob([pdfBytes.buffer as ArrayBuffer], { type: 'application/pdf' });
+      const blob = new Blob([pdfBytes as unknown as Uint8Array<ArrayBuffer>], { type: 'application/pdf' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
       a.download = `FIR_Draft_${details.fullName ? details.fullName.replace(/\s+/g, '_') : 'NyayaSathi'}.pdf`;
+      document.body.appendChild(a);
       a.click();
+      document.body.removeChild(a);
       URL.revokeObjectURL(url);
     } catch (err) {
       console.error('Error generating PDF:', err);
@@ -650,7 +664,7 @@ const CitizenComplaint = () => {
               </pre>
               <div className="mt-4 flex gap-3">
                 <Button className="gradient-saffron text-primary-foreground font-semibold" onClick={handleSubmitToOfficer}>Submit to Officer</Button>
-                <Button variant="outline" onClick={handleDownloadPDF}>Download PDF</Button>
+                <Button variant="outline" onClick={handleDownloadPDF}>Download FIR PDF</Button>
               </div>
             </Card>
 

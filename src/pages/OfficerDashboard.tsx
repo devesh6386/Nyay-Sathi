@@ -3,7 +3,9 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { FileText, Clock, CheckCircle, Shield, Loader2, Download, Eye, FileDigit, AlertCircle } from "lucide-react";
+import { FileText, Clock, CheckCircle, Shield, Loader2, Download, Eye, FileDigit, AlertCircle, FileCheck } from "lucide-react";
+import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import { printBSACertificate } from "@/lib/printCertificate";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -111,6 +113,36 @@ const OfficerDashboard = () => {
     } finally {
       setLoadingEvidence(false);
     }
+  };
+
+  const generateCertificatePDF = async (item: any) => {
+    const formatBytes = (bytes: number) => {
+      if (!bytes) return "Unknown size";
+      if (bytes < 1024) return bytes + " B";
+      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+      return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+    };
+
+    let fileSize = 0;
+    try {
+      const token = localStorage.getItem("nyaysathi_token");
+      const res = await fetch(`http://localhost:8000${item.file_path}`, {
+        method: "HEAD",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const len = res.headers.get("content-length");
+      if (len) fileSize = parseInt(len, 10);
+    } catch (_) {}
+
+    printBSACertificate({
+      fileName: item.file_name || "Unknown",
+      fileSize: formatBytes(fileSize),
+      fileType: item.file_type || "Unknown",
+      fileHash: item.file_hash || "N/A",
+      timestamp: item.created_at
+        ? new Date(item.created_at).toLocaleString("en-IN")
+        : new Date().toLocaleString("en-IN"),
+    });
   };
 
   useEffect(() => {
@@ -364,6 +396,16 @@ const OfficerDashboard = () => {
                                   </Button>
                                   <Button 
                                     size="sm" 
+                                    variant="outline" 
+                                    className="h-8 p-0 px-2 text-saffron border-saffron/30 hover:bg-saffron/10 ml-1 mr-1"
+                                    onClick={() => generateCertificatePDF(item)}
+                                    title="Download BSA Certificate"
+                                  >
+                                    <FileCheck className="h-3 w-3 mr-1 text-saffron" />
+                                    <span className="text-[10px] font-medium hidden sm:inline">BSA Cert</span>
+                                  </Button>
+                                  <Button 
+                                    size="sm" 
                                     variant="ghost" 
                                     className="h-8 w-8 p-0 hover:bg-emerald-500/10"
                                     onClick={() => {
@@ -460,7 +502,7 @@ const OfficerDashboard = () => {
                     <Button variant="outline" asChild>
                       <a href={`/evidence?complaintId=${selectedFIR.id}`}>
                         <Shield className="mr-2 h-4 w-4" />
-                        Certify Evidence
+                        Upload Additional Evidence
                       </a>
                     </Button>
                   </div>
