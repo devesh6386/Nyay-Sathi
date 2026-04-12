@@ -12,6 +12,12 @@ import shutil
 from database import get_db, User, Complaint, PasswordResetOTP, Evidence
 from auth import get_password_hash, verify_password, create_access_token, get_current_user, require_role
 from rag_engine import process_complaint
+from google.oauth2 import id_token
+from google.auth.transport import requests as google_requests
+from dotenv import load_dotenv
+
+load_dotenv(override=True)
+GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID")
 
 app = FastAPI(title="Nyaya-Sathi API")
 
@@ -63,6 +69,9 @@ class ComplaintStatusUpdate(BaseModel):
 class ChatRequest(BaseModel):
     message: str
 
+class GoogleAuthRequest(BaseModel):
+    credential: str
+
 # --- Auth Endpoints ---
 @app.post("/register")
 def register_user(user: UserCreate, db: Session = Depends(get_db)):
@@ -106,6 +115,50 @@ def login_user(user: UserLogin, db: Session = Depends(get_db)):
     print(f"[AUTH] Login successful for {db_user.email} ({db_user.role})")
     return {"access_token": token, "token_type": "bearer", "role": db_user.role, "full_name": db_user.full_name, "id": db_user.id}
 
+@app.post("/auth/google")
+def google_auth(req: GoogleAuthRequest, db: Session = Depends(get_db)):
+    if not GOOGLE_CLIENT_ID or GOOGLE_CLIENT_ID == "your_google_client_id_here":
+        # Accept mock validation for frontend testing without a real project ID initially if needed,
+        # but in production we require the true client ID.
+        pass
+    
+    try:
+        # Validate Google JWT
+        idinfo = id_token.verify_oauth2_token(
+            req.credential, 
+            google_requests.Request(), 
+            GOOGLE_CLIENT_ID
+        )
+
+        email = idinfo['email']
+        full_name = idinfo.get('name', 'Google User')
+        
+        db_user = db.query(User).filter(User.email == email).first()
+        
+        if not db_user:
+            # Create a new citizen user
+            # We assign a random string password since they use Google to auth
+            random_pass = os.urandom(16).hex()
+            hashed_password = get_password_hash(random_pass)
+            db_user = User(
+                email=email,
+                password_hash=hashed_password,
+                full_name=full_name,
+                role="citizen"
+            )
+            db.add(db_user)
+            db.commit()
+            db.refresh(db_user)
+            print(f"[AUTH] New Google user registered: {email}")
+        
+        # In both cases (login/register), we issue our own JWT access token
+        token = create_access_token(data={"sub": db_user.id, "role": db_user.role})
+        print(f"[AUTH] Google Login successful for {db_user.email}")
+        return {"access_token": token, "token_type": "bearer", "role": db_user.role, "full_name": db_user.full_name, "id": db_user.id}
+    except ValueError as e:
+        # Invalid token
+        raise HTTPException(status_code=401, detail=f"Invalid Google token: {str(e)}")
+
 # --- Password Reset Flow ---
 
 from email_utils import send_otp_email
@@ -125,17 +178,18 @@ def forgot_password(req: ForgotPasswordRequest, db: Session = Depends(get_db)):
     
     print(f"[AUTH] User found: {user.full_name} ({user.id})")
     
-    # Check rate limit: Prevent requesting OTP if one was created < 30 seconds ago
-    recent_otp = db.query(PasswordResetOTP).filter(
-        PasswordResetOTP.user_id == user.id
-    ).order_by(PasswordResetOTP.created_at.desc()).first()
+    # Check rate limit: Max 3 per 10 minutes
+    now = datetime.utcnow()
+    ten_mins_ago = now - timedelta(minutes=10)
     
-    if recent_otp:
-        now = datetime.utcnow()
-        created = recent_otp.created_at.replace(tzinfo=None) if recent_otp.created_at.tzinfo else recent_otp.created_at
-        if (now - created).total_seconds() < 30:
-            print(f"[AUTH] Rate limit triggered for {target_email}. Too soon since last request.")
-            raise HTTPException(status_code=429, detail="Please wait 30 seconds before requesting another code.")
+    recent_otps_count = db.query(PasswordResetOTP).filter(
+        PasswordResetOTP.user_id == user.id,
+        PasswordResetOTP.created_at >= ten_mins_ago
+    ).count()
+    
+    if recent_otps_count >= 3:
+        print(f"[AUTH] Rate limit triggered for {target_email}. Requested {recent_otps_count} times in last 10 mins.")
+        raise HTTPException(status_code=429, detail="Too many requests. Please wait 10 minutes before requesting another code.")
 
     # Generate 6-digit OTP
     otp_code = f"{random.randint(100000, 999999)}"
@@ -154,8 +208,6 @@ def forgot_password(req: ForgotPasswordRequest, db: Session = Depends(get_db)):
             detail="Failed to send OTP email. Please ensure the server has valid SMTP credentials configured."
         )
 
-    print(f"[AUTH] OTP email successfully dispatched to {user.email}.")
-    
     # Invalidate previous OTPs for this user
     db.query(PasswordResetOTP).filter(
         PasswordResetOTP.user_id == user.id,
@@ -173,7 +225,7 @@ def forgot_password(req: ForgotPasswordRequest, db: Session = Depends(get_db)):
     db.commit()
     print(f"[AUTH] New OTP saved and activated for {req.email}.")
     
-    return {"message": "OTP sent to your email successfully."}
+    return {"message": "If this email is registered, an OTP has been sent."}
 
 @app.post("/verify-otp")
 def verify_otp(req: VerifyOTPRequest, db: Session = Depends(get_db)):

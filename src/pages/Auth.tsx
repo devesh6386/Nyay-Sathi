@@ -9,6 +9,7 @@ import {
   Scale, User, ShieldCheck, Eye, EyeOff, ArrowRight, Loader2, CheckCircle2,
   XCircle,
 } from "lucide-react";
+import { CredentialResponse, GoogleLogin } from "@react-oauth/google";
 
 type Role = "citizen" | "officer";
 
@@ -44,6 +45,30 @@ export default function Auth() {
     const t = setTimeout(() => setMounted(true), 50);
     return () => clearTimeout(t);
   }, []);
+
+  const handleGoogleSuccess = async (credentialResponse: CredentialResponse) => {
+    setLoading(true);
+    try {
+      const res = await fetch("http://localhost:8000/auth/google", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ credential: credentialResponse.credential }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || "Google authentication failed");
+      }
+      const data = await res.json();
+      localStorage.setItem("nyaysathi_token", data.access_token);
+      localStorage.setItem("nyaysathi_role", data.role);
+      setSuccess(true);
+      toast.success("Welcome with Google!");
+      setTimeout(() => navigate(data.role === "officer" ? "/dashboard" : "/citizen"), 700);
+    } catch (err: any) {
+      toast.error(err.message || "An error occurred during Google sign in.");
+      setLoading(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -95,12 +120,7 @@ export default function Auth() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || "Failed to send OTP");
       
-      const otpMsg = data.debug_otp ? `OTP sent! (Demo Code: ${data.debug_otp})` : "OTP sent! Check your email.";
-      toast.success(otpMsg, { duration: 10000 }); // Show longer for demo
-      
-      if (data.debug_otp) {
-        console.log(`[DEBUG] OTP: ${data.debug_otp}`);
-      }
+      toast.success("OTP sent! Check your email.");
       setResetStep(2);
     } catch (err: any) {
       toast.error(err.message);
@@ -408,8 +428,29 @@ export default function Auth() {
             </Button>
           </form>
 
+          {/* Google Auth Divider */}
+          <div className="relative mt-8 mb-6">
+            <div className="absolute inset-0 flex items-center">
+              <span className="w-full border-t border-border" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-background px-2 text-muted-foreground font-semibold">Or continue with</span>
+            </div>
+          </div>
+
+          <div className="flex justify-center w-full">
+            <GoogleLogin
+               onSuccess={handleGoogleSuccess}
+               onError={() => toast.error("Google Login Failed")}
+               theme="filled_black"
+               shape="pill"
+               width="100%"
+               size="large"
+            />
+          </div>
+
           {/* Toggle */}
-          <p className="text-center text-sm text-muted-foreground mt-6">
+          <p className="text-center text-sm text-muted-foreground mt-8">
             {isLogin ? "Don't have an account? " : "Already have an account? "}
             <button
               type="button"

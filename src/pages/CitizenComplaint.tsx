@@ -44,7 +44,7 @@ const CitizenComplaint = () => {
   const [details, setDetails] = useState<ComplainantDetails>(initialDetails);
   const [isProcessing, setIsProcessing] = useState(false);
   const [result, setResult] = useState<ExtractedData | null>(null);
-  const [evidenceFiles, setEvidenceFiles] = useState<{name: string, hash: string}[]>([]);
+  const [evidenceFiles, setEvidenceFiles] = useState<{name: string, hash: string, rawFile: File}[]>([]);
 
   // Audio recording state
   const [isRecording, setIsRecording] = useState(false);
@@ -339,7 +339,7 @@ const CitizenComplaint = () => {
       page.drawText('Complainant / Informant', { x: margin, y: yOffset, size: 10, font: font });
 
       const pdfBytes = await pdfDoc.save();
-      const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+      const blob = new Blob([pdfBytes.buffer as ArrayBuffer], { type: 'application/pdf' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -374,9 +374,40 @@ const CitizenComplaint = () => {
       if (!res.ok) {
           throw new Error("Failed to submit complaint to server");
       }
-      
-      toast.dismiss();
-      toast.success("Complaint successfully filed. The nearest police station will review it shortly.");
+
+      const newComplaint = await res.json();
+      const complaintId = newComplaint.id;
+
+      // Upload each evidence file to the backend and link it to this complaint
+      if (evidenceFiles.length > 0 && complaintId) {
+        toast.loading(`Uploading ${evidenceFiles.length} evidence file(s)...`);
+        let uploadedCount = 0;
+        for (const ev of evidenceFiles) {
+          try {
+            const formData = new FormData();
+            formData.append("file", ev.rawFile);
+            formData.append("file_hash", ev.hash);
+            const uploadRes = await fetch(`http://localhost:8000/complaints/${complaintId}/evidence`, {
+              method: "POST",
+              headers: { "Authorization": `Bearer ${token}` },
+              body: formData,
+            });
+            if (uploadRes.ok) uploadedCount++;
+            else console.error(`[EVIDENCE] Upload failed for ${ev.name}:`, await uploadRes.text());
+          } catch (uploadErr) {
+            console.error(`[EVIDENCE] Exception uploading ${ev.name}:`, uploadErr);
+          }
+        }
+        toast.dismiss();
+        if (uploadedCount === evidenceFiles.length) {
+          toast.success(`Complaint filed & ${uploadedCount} evidence file(s) uploaded successfully.`);
+        } else {
+          toast.warning(`Complaint filed. ${uploadedCount}/${evidenceFiles.length} evidence file(s) uploaded.`);
+        }
+      } else {
+        toast.dismiss();
+        toast.success("Complaint successfully filed. The nearest police station will review it shortly.");
+      }
       
     } catch (err: any) {
       console.error(err);
@@ -397,7 +428,7 @@ const CitizenComplaint = () => {
           const hashBuffer = await crypto.subtle.digest("SHA-256", buffer);
           const hashArray = Array.from(new Uint8Array(hashBuffer));
           const hashHex = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
-          return { name: file.name, hash: hashHex };
+          return { name: file.name, hash: hashHex, rawFile: file };
         })
       );
       

@@ -13,14 +13,16 @@ import Auth from "./pages/Auth";
 import TrackComplaint from "./pages/TrackComplaint";
 import ProtectedRoute from "./components/ProtectedRoute";
 import { AIChatbot } from "./components/AIChatbot";
+import { GoogleOAuthProvider } from "@react-oauth/google";
 
 const queryClient = new QueryClient();
 
 const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <Toaster />
-      <Sonner />
+  <GoogleOAuthProvider clientId={import.meta.env.VITE_GOOGLE_CLIENT_ID || ""}>
+    <QueryClientProvider client={queryClient}>
+      <TooltipProvider>
+        <Toaster />
+        <Sonner />
       <BrowserRouter>
         <Navbar />
         <Routes>
@@ -56,7 +58,8 @@ const App = () => (
         <AIChatbot />
       </BrowserRouter>
     </TooltipProvider>
-  </QueryClientProvider>
+    </QueryClientProvider>
+  </GoogleOAuthProvider>
 );
 
 export default App;

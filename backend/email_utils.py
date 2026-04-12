@@ -5,7 +5,7 @@ import logging
 from dotenv import load_dotenv
 
 # Load env variables from backend/.env securely
-load_dotenv()
+load_dotenv(override=True)
 
 logger = logging.getLogger(__name__)
 
