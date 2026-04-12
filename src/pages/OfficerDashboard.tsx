@@ -7,6 +7,7 @@ import { FileText, Clock, CheckCircle, Shield, Loader2, Download, Eye, FileDigit
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { printBSACertificate } from "@/lib/printCertificate";
 import { toast } from "sonner";
+import { API_BASE_URL } from "@/config";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -60,7 +61,7 @@ const OfficerDashboard = () => {
     if (!token) { setLoading(false); return; }
 
     try {
-      const res = await fetch("http://localhost:8000/complaints", {
+      const res = await fetch("${API_BASE_URL}/complaints", {
         headers: { "Authorization": `Bearer ${token}` }
       });
       if (!res.ok) throw new Error("Failed");
@@ -101,7 +102,7 @@ const OfficerDashboard = () => {
     setLoadingEvidence(true);
     const token = localStorage.getItem("nyaysathi_token");
     try {
-      const res = await fetch(`http://localhost:8000/complaints/${complaintId}/evidence`, {
+      const res = await fetch(`${API_BASE_URL}/complaints/${complaintId}/evidence`, {
         headers: { "Authorization": `Bearer ${token}` }
       });
       if (res.ok) {
@@ -126,7 +127,7 @@ const OfficerDashboard = () => {
     let fileSize = 0;
     try {
       const token = localStorage.getItem("nyaysathi_token");
-      const res = await fetch(`http://localhost:8000${item.file_path}`, {
+      const res = await fetch(`${API_BASE_URL}${item.file_path}`, {
         method: "HEAD",
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -156,7 +157,7 @@ const OfficerDashboard = () => {
     setIsDispatching(true);
     try {
       const token = localStorage.getItem("nyaysathi_token");
-      const res = await fetch(`http://localhost:8000/complaints/${selectedFIR.id}/status`, {
+      const res = await fetch(`${API_BASE_URL}/complaints/${selectedFIR.id}/status`, {
         method: "PUT",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
         body: JSON.stringify({ status: "dispatched" })
@@ -179,7 +180,7 @@ const OfficerDashboard = () => {
     setIsResolving(true);
     try {
       const token = localStorage.getItem("nyaysathi_token");
-      const res = await fetch(`http://localhost:8000/complaints/${selectedFIR.id}/status`, {
+      const res = await fetch(`${API_BASE_URL}/complaints/${selectedFIR.id}/status`, {
         method: "PUT",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
         body: JSON.stringify({ status: "resolved" })
@@ -203,7 +204,7 @@ const OfficerDashboard = () => {
     if (!selectedFIR) return;
     try {
       const token = localStorage.getItem("nyaysathi_token");
-      const res = await fetch(`http://localhost:8000/complaints/${selectedFIR.id}?description=${encodeURIComponent(draftText)}`, {
+      const res = await fetch(`${API_BASE_URL}/complaints/${selectedFIR.id}?description=${encodeURIComponent(draftText)}`, {
         method: "PUT",
         headers: { "Authorization": `Bearer ${token}` }
       });
@@ -368,7 +369,7 @@ const OfficerDashboard = () => {
                                 <div className="h-12 w-12 rounded bg-background border border-border/50 flex items-center justify-center shrink-0 overflow-hidden shadow-sm">
                                    {isImage ? (
                                      <img 
-                                       src={`http://localhost:8000${item.file_path}`} 
+                                       src={`${API_BASE_URL}${item.file_path}`} 
                                        alt={item.file_name} 
                                        className="h-full w-full object-cover"
                                      />
@@ -389,7 +390,7 @@ const OfficerDashboard = () => {
                                     size="sm" 
                                     variant="ghost" 
                                     className="h-8 w-8 p-0 hover:bg-primary/10"
-                                    onClick={() => window.open(`http://localhost:8000${item.file_path}`, '_blank')}
+                                    onClick={() => window.open(`${API_BASE_URL}${item.file_path}`, '_blank')}
                                     title="View Full"
                                   >
                                     <Eye className="h-4 w-4 text-primary" />
@@ -410,7 +411,7 @@ const OfficerDashboard = () => {
                                     className="h-8 w-8 p-0 hover:bg-emerald-500/10"
                                     onClick={() => {
                                       const link = document.createElement('a');
-                                      link.href = `http://localhost:8000${item.file_path}`;
+                                      link.href = `${API_BASE_URL}${item.file_path}`;
                                       link.download = item.file_name;
                                       link.click();
                                     }}

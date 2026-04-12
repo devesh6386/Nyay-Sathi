@@ -10,6 +10,7 @@ import { Brain, Upload, FileText, CheckCircle, Loader2, Mic, MicOff, Square, Use
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { printFIR } from "@/lib/printFIR";
+import { API_BASE_URL } from "@/config";
 
 interface ExtractedData {
   translatedText: string;
@@ -109,7 +110,7 @@ const CitizenComplaint = () => {
       const formData = new FormData();
       formData.append("file", audioBlob, `recording.${ext}`);
 
-      const response = await fetch("http://localhost:8000/transcribe", {
+      const response = await fetch("${API_BASE_URL}/transcribe", {
         method: "POST",
         body: formData,
       });
@@ -144,7 +145,7 @@ const CitizenComplaint = () => {
     setIsProcessing(true);
     try {
       const response = await fetch(
-        "http://localhost:8000/analyze-complaint",
+        "${API_BASE_URL}/analyze-complaint",
         {
           method: "POST",
           headers: {
@@ -217,7 +218,7 @@ const CitizenComplaint = () => {
       const title = result?.entities.find(e => e.label.toLowerCase() === 'suspect')?.value || "Pending Assignment";
       const description = result?.firDraft || complaint;
       
-      const res = await fetch(`http://localhost:8000/complaints?title=${encodeURIComponent(title)}&description=${encodeURIComponent(description)}`, {
+      const res = await fetch(`${API_BASE_URL}/complaints?title=${encodeURIComponent(title)}&description=${encodeURIComponent(description)}`, {
           method: "POST",
           headers: {
               "Authorization": `Bearer ${token}`
@@ -240,7 +241,7 @@ const CitizenComplaint = () => {
             const formData = new FormData();
             formData.append("file", ev.rawFile);
             formData.append("file_hash", ev.hash);
-            const uploadRes = await fetch(`http://localhost:8000/complaints/${complaintId}/evidence`, {
+            const uploadRes = await fetch(`${API_BASE_URL}/complaints/${complaintId}/evidence`, {
               method: "POST",
               headers: { "Authorization": `Bearer ${token}` },
               body: formData,
