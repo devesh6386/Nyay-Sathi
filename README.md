@@ -279,13 +279,13 @@ uvicorn main:app --reload
 Create `.env` inside backend:
 
 ```env
-OPENAI_API_KEY=your_key
-GEMINI_API_KEY=your_key
-MISTRAL_API_KEY=your_key
+OPENAI_API_KEY=private
+GEMINI_API_KEY=private
+MISTRAL_API_KEY=private
 CHROMA_DB_PATH=./chroma
-SMTP_EMAIL=your_email
-SMTP_PASSWORD=your_app_password
-JWT_SECRET=your_secret
+SMTP_EMAIL=private
+SMTP_PASSWORD=private
+JWT_SECRET=private
 ```
 
 ---
