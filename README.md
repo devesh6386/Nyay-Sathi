@@ -2,6 +2,9 @@
 
 ### BNS-Ready AI Justice Infrastructure for FIR Intelligence & Court-Admissible Evidence
 
+## 🎥 Demo Video
+https://youtu.be/GtYwdB6FD1o
+
 Nyaya-Sathi converts unstructured citizen complaints into legally valid FIRs mapped to India’s new BNS framework, while generating court-admissible digital evidence certificates using local-first cryptographic hashing.
 ---
 ## 🚀 Overview
