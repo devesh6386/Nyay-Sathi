@@ -1,8 +1,12 @@
 from sqlalchemy import Column, String, Integer, DateTime, func, ForeignKey, create_engine
 from sqlalchemy.orm import declarative_base, relationship, sessionmaker
 import uuid
+import os
 
-DATABASE_URL = "sqlite:///./nyaysathi.db"
+# On Render: uses persistent disk at /opt/render/project/src/data/
+# Locally: uses ./nyaysathi.db
+_db_path = os.environ.get("DATABASE_URL", "sqlite:///./nyaysathi.db")
+DATABASE_URL = _db_path
 
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

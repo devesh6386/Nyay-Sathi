@@ -32,9 +32,11 @@ app.add_middleware(
 )
 
 # Mount uploads directory to serve files
-if not os.path.exists("uploads"):
-    os.makedirs("uploads")
-app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+# On Render: UPLOAD_DIR=/opt/render/project/src/data/uploads
+# Locally: ./uploads
+UPLOAD_DIR = os.environ.get("UPLOAD_DIR", "uploads")
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 # --- Pydantic Models ---
 class UserCreate(BaseModel):
@@ -372,8 +374,7 @@ def update_complaint_description(complaint_id: str, description: str, db: Sessio
     db.commit()
     return {"message": "Draft saved successfully"}
 
-UPLOAD_DIR = "uploads"
-os.makedirs(UPLOAD_DIR, exist_ok=True)
+# UPLOAD_DIR already defined above from env
 
 @app.post("/complaints/{complaint_id}/evidence")
 async def upload_evidence(

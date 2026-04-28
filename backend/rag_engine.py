@@ -20,8 +20,9 @@ llm = ChatGroq(
 # Initialize Embeddings
 embedding_function = SentenceTransformerEmbeddings(model_name="all-MiniLM-L6-v2")
 
-# Create local Chroma Vector Store
-VECTOR_STORE_DIR = "./chroma_db"
+# On Render: VECTOR_STORE_DIR=/opt/render/project/src/data/chroma_db
+# Locally: ./chroma_db
+VECTOR_STORE_DIR = os.environ.get("VECTOR_STORE_DIR", "./chroma_db")
 
 def initialize_vector_store():
     # If the collection already exists and has documents, we can just load it.
