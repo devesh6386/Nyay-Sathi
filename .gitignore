@@ -30,7 +30,9 @@ backend/*.pyc
 backend/nyaysathi.db
 backend/.env
 .env
-.env.*
+.env.local
+.env.production
+.env.development
 __pycache__/
 *.pyc
 *.pyo
