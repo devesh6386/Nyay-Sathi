@@ -29,6 +29,8 @@ backend/__pycache__/
 backend/*.pyc
 backend/nyaysathi.db
 backend/.env
+backend/uploads/
+backend/chroma_db/
 .env
 .env.local
 .env.production
