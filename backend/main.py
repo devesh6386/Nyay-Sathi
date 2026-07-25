@@ -1,3 +1,4 @@
+# pyrefly: ignore [missing-import]
 from fastapi import FastAPI, HTTPException, Depends, status, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -12,7 +13,7 @@ import groq
 
 from database import get_db, User, Complaint, PasswordResetOTP, Evidence
 from auth import get_password_hash, verify_password, create_access_token, get_current_user, require_role
-from rag_engine import process_complaint
+from rag_engine import process_complaint, simple_chat
 from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
 from dotenv import load_dotenv
@@ -465,7 +466,7 @@ def read_root():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
-from rag_engine import process_complaint, simple_chat
+
 
 @app.post("/chat")
 def chat_with_ai(req: ChatRequest):

@@ -1,6 +1,7 @@
 import json
 import os
 from typing import Dict, Any
+# pyrefly: ignore [missing-import]
 from langchain_groq import ChatGroq
 from langchain.prompts import PromptTemplate
 from langchain_community.vectorstores import Chroma
@@ -10,39 +11,61 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Initialize LLM
-llm = ChatGroq(
-    temperature=0.1,
-    model_name="llama-3.1-8b-instant",
-    groq_api_key=os.environ.get("GROQ_API_KEY")
-)
+# Resolve paths relative to this file so they work regardless of cwd (important on Render)
+_HERE = os.path.dirname(os.path.abspath(__file__))
 
-# Initialize Embeddings
-embedding_function = SentenceTransformerEmbeddings(model_name="all-MiniLM-L6-v2")
+# Lazy singletons – initialized on first use, not at import time
+_llm = None
+_embedding_function = None
+_vector_db = None
+
+def _get_llm():
+    global _llm
+    if _llm is None:
+        _llm = ChatGroq(
+            temperature=0.1,
+            model_name="llama-3.1-8b-instant",
+            groq_api_key=os.environ.get("GROQ_API_KEY")
+        )
+    return _llm
+
+def _get_embedding_function():
+    global _embedding_function
+    if _embedding_function is None:
+        _embedding_function = SentenceTransformerEmbeddings(model_name="all-MiniLM-L6-v2")
+    return _embedding_function
 
 # On Render: VECTOR_STORE_DIR=/opt/render/project/src/data/chroma_db
 # Locally: ./chroma_db
-VECTOR_STORE_DIR = os.environ.get("VECTOR_STORE_DIR", "./chroma_db")
+VECTOR_STORE_DIR = os.environ.get("VECTOR_STORE_DIR", os.path.join(_HERE, "chroma_db"))
 
-def initialize_vector_store():
-    # If the collection already exists and has documents, we can just load it.
-    # For simplicity in the demo, we will recreate it from the JSON.
-    with open("bns_data.json", "r") as f:
-        data = json.load(f)
-    
-    documents = []
-    for item in data:
-        # Combine text for better embedding matches
-        content = f"{item['title']}: {item['description']} Keywords: {', '.join(item['keywords'])}"
-        doc = Document(page_content=content, metadata={"section": item["section"], "title": item["title"]})
-        documents.append(doc)
-        
-    db = Chroma.from_documents(documents, embedding_function, persist_directory=VECTOR_STORE_DIR)
-    db.persist()
-    return db
+def _get_vector_db():
+    """Lazy-initialize the ChromaDB vector store.
+    db.persist() was removed in chromadb >= 0.4 – omit it.
+    bns_data.json is resolved relative to this file, not cwd.
+    """
+    global _vector_db
+    if _vector_db is None:
+        bns_path = os.path.join(_HERE, "bns_data.json")
+        with open(bns_path, "r") as f:
+            data = json.load(f)
 
-# Initialize or load
-db = initialize_vector_store()
+        documents = []
+        for item in data:
+            content = f"{item['title']}: {item['description']} Keywords: {', '.join(item['keywords'])}"
+            doc = Document(
+                page_content=content,
+                metadata={"section": item["section"], "title": item["title"]}
+            )
+            documents.append(doc)
+
+        _vector_db = Chroma.from_documents(
+            documents,
+            _get_embedding_function(),
+            persist_directory=VECTOR_STORE_DIR
+        )
+        # NOTE: db.persist() was removed in chromadb >= 0.4 – data is auto-persisted.
+    return _vector_db
 
 # Prompt Template for parsing and generating FIR
 prompt_template = """
@@ -80,7 +103,7 @@ prompt = PromptTemplate(template=prompt_template, input_variables=["complainant_
 
 def process_complaint(complaint_text: str, complainant_data: Dict[str, Any]) -> Dict[str, Any]:
     # 1. Retrieve relevant BNS sections (Top 5)
-    docs = db.similarity_search(complaint_text, k=5)
+    docs = _get_vector_db().similarity_search(complaint_text, k=5)
     relevant_law = "\n".join([f"- {d.metadata['section']} ({d.metadata['title']}): {d.page_content}" for d in docs])
     
     complainant_str = json.dumps(complainant_data, indent=2)
@@ -93,7 +116,7 @@ def process_complaint(complaint_text: str, complainant_data: Dict[str, Any]) -> 
     )
     
     # 3. Call Groq
-    response = llm.invoke(formatted_prompt)
+    response = _get_llm().invoke(formatted_prompt)
     
     # 4. Parse JSON
     try:
@@ -119,7 +142,7 @@ def process_complaint(complaint_text: str, complainant_data: Dict[str, Any]) -> 
         }
 def simple_chat(query: str) -> str:
     # 1. Retrieve relevant BNS sections (Top 3 for chat)
-    docs = db.similarity_search(query, k=3)
+    docs = _get_vector_db().similarity_search(query, k=3)
     relevant_law = "\n".join([f"- {d.metadata['section']} ({d.metadata['title']}): {d.page_content}" for d in docs])
     
     chat_prompt = f"""
@@ -138,6 +161,6 @@ def simple_chat(query: str) -> str:
     - Keep responses concise (under 3-4 paragraphs).
     - Use bullet points for clarity if needed.
     """
-    
-    response = llm.invoke(chat_prompt)
+
+    response = _get_llm().invoke(chat_prompt)
     return response.content.strip()
